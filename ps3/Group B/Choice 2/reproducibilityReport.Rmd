@@ -1,0 +1,135 @@
+---
+title: "Reproducibility Report: Group B Choice 2"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+-------
+
+For this exercise, please try to reproduce the results from Experiment 1 of the associated paper (Ko, Sadler & Galinsky, 2015). The PDF of the paper is included in the same folder as this Rmd file. 
+
+#### Methods summary: 
+
+A sense of power has often been tied to how we perceive each other's voice. Social hierarchy is embedded into the structure of society and provides a metric by which others relate to one another. In 1956, the Brunswik Lens Model was introduced to examine how vocal cues might influence hierarchy. In "The Sound of Power: Conveying and Detecting Hierarchical Rank Through Voice," Ko and colleagues investigated how manipulation of hierarchal rank within a situation might impact vocal acoustic cues. Using the Brunswik Model, six acoustic metrics were utilized (pitch mean & variability, loudness mean & variability, and resonance mean & variability) to isolate a potential contribution between individuals of different hierarchal rank. In the first experiment, Ko, Sadler & Galinsky examined the vocal acoustic cues of individuals before and after being assigned a hierarchal rank in a sample of 161 subjects (80 male). Each of the six hierarchy acoustic cues were analyzed with a 2 (high vs. low rank condition) x 2 (male vs. female) analysis of covariance, controlling for the baseline of the respective acoustic cue.
+
+------
+
+#### Target outcomes: 
+
+Below is the specific result you will attempt to reproduce (quoted directly from the results section of Experiment 1):
+
+> The impact of hierarchical rank on speakers’ acoustic cues. Each of the six hierarchy-based (i.e., postmanipulation) acoustic variables was submitted to a 2 (condition: high rank, low rank) × 2 (speaker’s sex: female, male) between-subjects analysis of covariance, controlling for the corresponding baseline acoustic variable. Table 4 presents the adjusted means by condition. Condition had a significant effect on pitch, pitch variability, and loudness variability. Speakers’ voices in the high-rank condition had higher pitch, **F(1, 156) = 4.48, p < .05**; were more variable in loudness, **F(1, 156) = 4.66, p < .05**; and were more monotone (i.e., less variable in pitch), **F(1, 156) = 4.73, p < .05**, compared with speakers’ voices in the low-rank condition (**all other Fs < 1**; see the Supplemental Material for additional analyses of covariance involving pitch and loudness). (from Ko et al., 2015, p. 6; emphasis added)
+
+The adjusted means for these analyses are reported in Table 4 (Table4_AdjustedMeans.png, included in the same folder as this Rmd file).
+
+------
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Step 1: Load packages
+
+```{r}
+library(tidyverse) # for data munging
+library(knitr) # for kable table formating
+library(haven) # import and export 'SPSS', 'Stata' and 'SAS' Files
+library(readxl) # import excel files
+
+# #optional packages:
+library(psych)
+library(car) # for ANCOVA
+library(compute.es) # for ANCOVA
+library(lsmeans) # for ANCOVA
+
+library(rstatix)
+library(broom)
+```
+
+## Step 2: Load data
+
+```{r}
+# Just Experiment 1
+d <-read_csv("data/S1_voice_level_Final.csv")
+# DT::datatable(d)
+```
+
+## Step 3: Tidy data
+
+```{r}
+d_tidy = subset(d, select = -c(age, native, sex, voice, pow, feelpower, race, pitch_rmeanMD, pitch_rvarMD, intense_rmeanMD, intense_rvarMD, formant_rmeanMD, formant_rvarMD, pitch_smeanMD, pitch_svarMD, intense_smeanMD, intense_svarMD, formant_smeanMD, formant_svarMD, Zpitch_rmean, Zpitch_rvar, Zform_rmean, Zform_rvar, Zintense_rmean, Zintense_rvar, Zpitch_smean, Zpitch_svar, Zform_smean, Zform_svar, Zintense_smean, Zintense_svar))
+d_tidy
+```
+
+## Step 4: Run analysis
+
+### Pre-processing
+
+```{r}
+d_tidy = d_tidy %>%
+ mutate(
+  pitch_mean_adj = pitch_smean - pitch_rmean,
+  pitch_var_adj = pitch_svar - pitch_rvar,
+  intense_mean_adj = intense_smean - intense_rmean,
+  intense_var_adj = intense_svar - intense_rvar,
+  form_mean_adj = form_smean - form_rmean,
+  form_var_adj = form_svar - form_rvar,
+  )# calculate difference between experimental script and baseline for each voice
+```
+
+### Descriptive statistics
+
+In the paper, the adjusted means by condition are reported (see Table 4, or Table4_AdjustedMeans.png, included in the same folder as this Rmd file). Reproduce these values below:
+
+```{r}
+d_tidy = d_tidy %>%
+  group_by(plev) %>%
+  mutate(
+    avg_pitch_mean = mean(pitch_mean_adj) + mean(pitch_rmean),
+    avg_pitch_var = mean(pitch_var_adj) + mean(pitch_rvar),
+    avg_form_mean = mean(form_mean_adj) + mean(form_rmean),
+    avg_form_var = mean(form_var_adj) + mean(form_rvar),
+    avg_intense_mean = mean(intense_mean_adj) + mean(intense_rmean),
+    avg_intense_var = mean(intense_var_adj) + mean(intense_rvar)
+  ) %>% # average differences for each acoustic cue and then add to average baseline value
+  ungroup()
+d_tidy
+```
+
+### Inferential statistics
+
+> The impact of hierarchical rank on speakers’ acoustic cues. Each of the six hierarchy-based (i.e., postmanipulation) acoustic variables was submitted to a 2 (condition: high rank, low rank) × 2 (speaker’s sex: female, male) between-subjects analysis of covariance, controlling for the corresponding baseline acoustic variable. [...] Condition had a significant effect on pitch, pitch variability, and loudness variability. Speakers’ voices in the high-rank condition had higher pitch, **F(1, 156) = 4.48, p < .05**; were more variable in loudness, **F(1, 156) = 4.66, p < .05**; and were more monotone (i.e., less variable in pitch), **F(1, 156) = 4.73, p < .05**, compared with speakers’ voices in the low-rank condition (**all other Fs < 1**; see the Supplemental Material for additional analyses of covariance involving pitch and loudness).
+
+```{r}
+# reproduce the above results here
+
+#pitch_mean_ancova <- d_tidy %>%
+#  anova_test(avg_pitch_mean ~ vsex + plev)
+#get_anova_table(pitch_mean_ancova)
+
+#pitch_var_ancova <- d_tidy %>%
+#  anova_test(avg_pitch_var ~ vsex + plev)
+#get_anova_table(pitch_var_ancova)
+
+#intense_var_ancova <- d_tidy %>%
+#  anova_test(avg_intense_var ~ vsex + plev)
+#get_anova_table(intense_var_ancova)
+
+# stopped here because reached 3 hours mark
+```
+
+# Step 5: Reflection
+
+Were you able to reproduce the results you attempted to reproduce? If not, what part(s) were you unable to reproduce?
+
+> I was able to only partially reproduce the results. For Table 4, the adjusted means I calculated were slightly off, and I'm not sure why. I tried different ways of adjusting the means based on the baseline acoustic cues, but I could not reproduce the exact values from the paper because the authors did not describe exactly how they adjusted the means. For the ANCOVA tests, I ran into issues with code syntax and was not able to get the test to run.
+
+How difficult was it to reproduce your results? 
+
+> Difficult, I was not able to reproduce all the results.
+
+What aspects made it difficult? What aspects made it easy?
+
+> The authors did not include specific details about how they calculated their adjustments for the means based on the baseline acoustic cues. I appreciated that the authors included a codebook document; it made it much easier to understand the variables (the Group A article I reproduced did not have a codebook). 
