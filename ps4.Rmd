@@ -1,7 +1,7 @@
 ---
 title: 'Psych 251 PS4: Simulation + Analysis'
-author: "Mike Frank"
-date: "2019"
+author: "Candice Kim"
+date: "2020"
 output: 
   html_document:
     toc: true
@@ -18,26 +18,38 @@ This part is a warmup, it should be relatively straightforward `ggplot2` practic
 Load data from Frank, Vul, Saxe (2011, Infancy), a study in which we measured infants' looking to hands in moving scenes. There were infants from 3 months all the way to about two years, and there were two movie conditions (`Faces_Medium`, in which kids played on a white background, and `Faces_Plus`, in which the backgrounds were more complex and the people in the videos were both kids and adults). An eye-tracker measured children's attention to faces. This version of the dataset only gives two conditions and only shows the amount of looking at hands (other variables were measured as well). 
 
 ```{r}
+library(readr)
 fvs <- read_csv("data/FVS2011-hands.csv")
 ```
 
 First, use `ggplot` to plot a histogram of the ages of children in the study. NOTE: this is a repeated measures design, so you can't just take a histogram of every measurement. 
 
 ```{r}
+library(ggplot2)
+library(dplyr)
+histogram_fvs = fvs %>%
+  select(c("subid", "age")) # remove unnecessary columns for histogram
+histogram_fvs <- unique(histogram_fvs) # remove duplicate rows
+ggplot(histogram_fvs, aes(x=age)) + geom_histogram()
 ```
 
 Second, make a scatter plot showing hand looking as a function of age and condition. Add appropriate smoothing lines. Take the time to fix the axis labels and make the plot look nice.
 
 ```{r}
+ggplot(fvs, aes(x=age, y=hand.look, color=condition)) +
+  geom_point() +
+  geom_smooth(method=lm, se=FALSE, fullrange=TRUE) +
+  xlab("Age") +
+  ylab("Hand Looking")
 ```
 
 What do you conclude from this pattern of data?
 
-> ANSWER HERE
+> For both conditions, infants looked at hands longer with increasing age. This relationship was less pronounced for the "Faces_Medium" condition (kids played on white background) than the "Faces_Plus" condition (backgrounds were more complex and people in videos were both kids and adults).
 
 What statistical analyses would you perform here to quantify these differences?
 
-> ANSWER HERE
+> For comparing 2 conditions: t-test (compare average amoung of hand looking for two conditions) + Cohen's d (to calculate effect size). For determining effect of age on looking at hands: linear regression (since only one predictor of age).
 
 
 # Part 2: Simulation
@@ -55,16 +67,33 @@ What's the proportion of "significant" results ($p < .05$) that you see?
 First do this using a `for` loop.
 
 ```{r}
+times = 10000
+count = 0
+for (i in 1:times) {
+  d <- rnorm(30, mean = 0, sd = 1)
+  ttest = t.test(d, mu = 0, alternative = "two.sided")
+  if(ttest$p.value < 0.05) {
+    count = count + 1
+  }
+}
+print(count/times) # proportion of "significant" results (p < .05)
 ```
 
 Next, do this using the `replicate` function:
 
 ```{r}
+times = 10000
+d <- replicate(times, rnorm (30, mean = 0, sd = 1))
+transposed_d <- as.data.frame(t(d))
+transposed_d$pvalue = apply(transposed_d, 1, function(x) t.test(x[1:30], mu = 0, alternative = "two.sided")$p.value) # add column with p-value from t-test
+transposed_d$significance <- ifelse(transposed_d$pvalue<.05, 1, 0) # create dummy variable where 1 = significant, 0 = not significant
+proportion = sum(transposed_d$significance)/times
+print(proportion)
 ```
 
 How does this compare to the intended false-positive rate of $\alpha=0.05$?
 
-> ANSWER
+> Both the for loop and replicate function led to a false-positive rate very close to 0.05, although they were both a little larger than 0.05.
 
 Ok, that was a bit boring. Let's try something more interesting - let's implement a p-value sniffing simulation, in the style of Simons, Nelson, & Simonsohn (2011).
 
@@ -74,17 +103,46 @@ First, write a function that implements this sampling regime.
 
 ```{r}
 double.sample <- function () {
+  times = 30
+  d <- replicate(times, rnorm (30, mean = 0, sd = 1))
+  transposed_d <- as.data.frame(t(d))
+  stacked_d <- stack(transposed_d)
+  stacked_d <- select(stacked_d, -c("ind"))
+  ttest = t.test(stacked_d, mu = 0, alternative = "two.sided")
+  pvalue = ttest$p.value
+  if(pvalue > 0.05 && pvalue < 0.25) {
+    d_2 <- replicate(times, rnorm (30, mean = 0, sd = 1))
+    transposed_d_2 <- as.data.frame(t(d_2))
+    stacked_d_2 <- stack(transposed_d_2)
+    stacked_d_2 <- select(stacked_d_2, -c("ind"))
+    total_d <- rbind(stacked_d, stacked_d_2)
+    ttest_total = t.test(total_d, mu = 0, alternative = "two.sided")
+    pvalue = ttest_total$p.value
+  }
+  return(pvalue)
 }
+print(double.sample())
 ```
 
 Now call this function 10k times and find out what happens. 
 
 ```{r}
+times_total = 10000
+count = 0
+pvalue_table = as.data.frame(matrix(ncol=times_total,nrow=1))
+for (i in 1:times_total) {
+  pval = double.sample()
+  pvalue_table[i] = pval
+  if(pval < 0.05) {
+    count = count + 1
+  }
+}
+print(count/times_total)
 ```
 
 Is there an inflation of false positives? How bad is it?
 
-> ANSWER
+> Yes, there is an inflation of false positives. We now have almost a 40% increase in significant p-values (5% vs. 6.9%)
 
 Now modify this code so that you can investigate this "double the sample" rule in a bit more depth. In the previous question, the researcher doubles the sample only when they think they got "close" to a significant result, i.e. when their not-significant p is less than 0.25. What if the researcher was more optimistic? See what happens in these 3 other scenarios:
 
@@ -99,8 +157,103 @@ HINT: Try to do this by making the function `double.sample` take the upper p val
 HINT 2: You may need more samples. Find out by looking at how the results change from run to run.
 
 ```{r}
+# Scenario 1: The researcher doubles the sample whenever their pvalue is not significant, but it's less than 0.5.
+double.sample <- function () {
+  times = 30
+  d <- replicate(times, rnorm (30, mean = 0, sd = 1))
+  transposed_d <- as.data.frame(t(d))
+  stacked_d <- stack(transposed_d)
+  stacked_d <- select(stacked_d, -c("ind"))
+  ttest = t.test(stacked_d, mu = 0, alternative = "two.sided")
+  pvalue = ttest$p.value
+  if(pvalue > 0.05 && pvalue < 0.50) {
+    d_2 <- replicate(times, rnorm (30, mean = 0, sd = 1))
+    transposed_d_2 <- as.data.frame(t(d_2))
+    stacked_d_2 <- stack(transposed_d_2)
+    stacked_d_2 <- select(stacked_d_2, -c("ind"))
+    total_d <- rbind(stacked_d, stacked_d_2)
+    ttest_total = t.test(total_d, mu = 0, alternative = "two.sided")
+    pvalue = ttest_total$p.value
+  }
+  return(pvalue)
+}
+times_total = 10000
+count = 0
+pvalue_table = as.data.frame(matrix(ncol=times_total,nrow=1))
+for (i in 1:times_total) {
+  pval = double.sample()
+  pvalue_table[i] = pval
+  if(pval < 0.05) {
+    count = count + 1
+  }
+}
+print(count/times_total)
+
+# Scenario 2: The researcher doubles the sample whenever their pvalue is not significant, but it's less than 0.75.
+double.sample <- function () {
+  times = 30
+  d <- replicate(times, rnorm (30, mean = 0, sd = 1))
+  transposed_d <- as.data.frame(t(d))
+  stacked_d <- stack(transposed_d)
+  stacked_d <- select(stacked_d, -c("ind"))
+  ttest = t.test(stacked_d, mu = 0, alternative = "two.sided")
+  pvalue = ttest$p.value
+  if(pvalue > 0.05 && pvalue < 0.75) {
+    d_2 <- replicate(times, rnorm (30, mean = 0, sd = 1))
+    transposed_d_2 <- as.data.frame(t(d_2))
+    stacked_d_2 <- stack(transposed_d_2)
+    stacked_d_2 <- select(stacked_d_2, -c("ind"))
+    total_d <- rbind(stacked_d, stacked_d_2)
+    ttest_total = t.test(total_d, mu = 0, alternative = "two.sided")
+    pvalue = ttest_total$p.value
+  }
+  return(pvalue)
+}
+times_total = 10000
+count = 0
+pvalue_table = as.data.frame(matrix(ncol=times_total,nrow=1))
+for (i in 1:times_total) {
+  pval = double.sample()
+  pvalue_table[i] = pval
+  if(pval < 0.05) {
+    count = count + 1
+  }
+}
+print(count/times_total)
+
+# Scenario 3: The research doubles their sample whenever they get ANY pvalue that is not significant.
+double.sample <- function () {
+  times = 30
+  d <- replicate(times, rnorm (30, mean = 0, sd = 1))
+  transposed_d <- as.data.frame(t(d))
+  stacked_d <- stack(transposed_d)
+  stacked_d <- select(stacked_d, -c("ind"))
+  ttest = t.test(stacked_d, mu = 0, alternative = "two.sided")
+  pvalue = ttest$p.value
+  if(pvalue > 0.05) {
+    d_2 <- replicate(times, rnorm (30, mean = 0, sd = 1))
+    transposed_d_2 <- as.data.frame(t(d_2))
+    stacked_d_2 <- stack(transposed_d_2)
+    stacked_d_2 <- select(stacked_d_2, -c("ind"))
+    total_d <- rbind(stacked_d, stacked_d_2)
+    ttest_total = t.test(total_d, mu = 0, alternative = "two.sided")
+    pvalue = ttest_total$p.value
+  }
+  return(pvalue)
+}
+times_total = 10000
+count = 0
+pvalue_table = as.data.frame(matrix(ncol=times_total,nrow=1))
+for (i in 1:times_total) {
+  pval = double.sample()
+  pvalue_table[i] = pval
+  if(pval < 0.05) {
+    count = count + 1
+  }
+}
+print(count/times_total)
 ```
 
 What do you conclude on the basis of this simulation? How bad is this kind of data-dependent policy?
 
-> ANSWER
+> Scenario 1 returned 0.0748, Scenario 2 returned 0.0862, and Scenario 3 returned 0.0869 proportion of "significant" results. This simulation shows that this data-dependent policy is very bad and can easily lead to p hacking! The false positive rate has increased a considerable amount with each scenario, with Scenario 3 leading to nearly a 75% increase in false positives (5% vs. 8.7%)
